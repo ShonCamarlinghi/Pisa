@@ -46,15 +46,22 @@ def asr(ASRres, b):
             print "Waiting for ASR response..."
             time.sleep(1)   
  
-def snooz():    
+def snooz():
+    
     device.shell('am force-stop com.android.browser')
     device.touch(460, 900, MonkeyDevice.DOWN_AND_UP)
     #device.press('KEYCODE_BACK', MonkeyDevice.DOWN_AND_UP)
     time.sleep(1)
     device.shell('logcat -c')
     device.touch(260, 805, MonkeyDevice.DOWN_AND_UP)
-    print "Pressed CVQ from application"
-    time.sleep(2)
+    while True:
+	logcat2 = device.shell('logcat -d -v time')
+	m2 = re.search(r'Time taken for: setting cvs preset', logcat2)
+	if m2:
+		print "CVQ preset set"
+		break
+        else:
+		time.sleep(1)
      
 
 def frr(value, n, start_t):
@@ -102,13 +109,13 @@ def KWcount(value):
                 if int(delta_t) >= total_t:
                     break
 	except TypeError:
-	    asrCase(value, ASRres)
-        adbConnection()
+	        asrCase(value, ASRres)
+                adbConnection()
     asrCase(value, ASRres)
     #frr(value,n, start_t)
 
 
-print 'Device under test s/n: %s' % deviceID
+print 'Hello! :), device under test s/n: %s' % deviceID
  
 
 for value in case:
