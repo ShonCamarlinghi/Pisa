@@ -1,24 +1,28 @@
 #!/usr/bin/python/2.7
 
-import time 
+import time
 import threading
 import sys
 import os
 import os.path
 import string
 import re
-
+import subprocess
+import signal
 from com.android.monkeyrunner import MonkeyRunner, MonkeyDevice
+
 adb = os.popen('adb devices').read().strip().split('\n')[1:]
 deviceID = adb[0].split('\t')[0]
-device = MonkeyRunner.waitForConnection(1000, deviceID) 
-total_n = 200.0
-total_t = 455*10
+device = MonkeyRunner.waitForConnection(1000, deviceID)
+print 'Hello! :), device under test s/n: %s' % deviceID
+total_n = 20.0
+total_t = 472
 case = ['Clean']
 KW = 'NihaoZhongXin'
 outDir = '/home/ate/workspace/es804_CVQ_QS/CVQ'
 fname = os.path.join(outDir, KW + '_CVQ.txt')
 f = open(fname, 'w')
+
 
 
 def adbConnection():
@@ -28,7 +32,13 @@ def adbConnection():
     except IndexError:
         print 'Could not get adb connection at %s' % time.asctime()
         sys.exit(1)
- 
+
+def exitGracefully(self, signum, frame):
+	print 'Exiting Gracefully...'
+	signal.signal(signal.SIGINT, signal.getsignal(signal.SIGINT))
+	device.shell('killall com.android.commands.monkey')
+	sys.exit(1)
+
 def asr(ASRres, b):
     print "ASR"    
     while True:
@@ -46,8 +56,7 @@ def asr(ASRres, b):
             print "Waiting for ASR response..."
             time.sleep(1)   
  
-def snooz():
-    
+def snooz():    
     device.shell('am force-stop com.android.browser')
     device.touch(460, 900, MonkeyDevice.DOWN_AND_UP)
     #device.press('KEYCODE_BACK', MonkeyDevice.DOWN_AND_UP)
@@ -60,7 +69,7 @@ def snooz():
 	if m2:
 		print "CVQ preset set"
 		break
-        else:
+	else:
 		time.sleep(1)
      
 
@@ -80,44 +89,45 @@ def far(value, n, start_t):
  
 
 def asrCase(value, ASRres):  
- 
     for i in ASRres:
         f.write(''.join(str(i))) 
         f.write('\n')
                 
-         
-def KWcount(value): 
-    n = 0
-    start_t = time.asctime()
-    start = time.time()
-    ASRres =[]
-    print "\nStart time: %s, case: %s" % (start_t, value)
-    device.touch(260, 805, MonkeyDevice.DOWN_AND_UP)
-    while True:
-        logcat0 = device.shell('logcat -d -v time')
-        try: 
-            if 'detected cvs event' in logcat0: 
-                n += 1
-                delta_t = time.time() - start
-                print "KW detection: %d, Lapsed time: %d" % (n, delta_t)
-                b = ' (Utterance_%(n)03d)' % {"n":n}
-                asr(ASRres, b)
-                snooz()
-            else:
+def KWcount(value):
+	n = 0
+	start_t = time.asctime()
+	start = time.time()
+	ASRres =[]
+	print "\nStart time: %s, case: %s" % (start_t, value)
+	device.touch(260, 805, MonkeyDevice.DOWN_AND_UP)
+	while True:
+		logcat0 = device.shell('logcat -d -v time')
+		try:
+			if 'detected cvs event' in logcat0:
+				n += 1
+				delta_t = time.time() - start
+				print "KW detection: %d, Lapsed time: %d" % (n, delta_t)
+				b = ' (Utterance_%(n)03d)' % {"n":n}
+				asr(ASRres, b)
+				snooz()
+			else:
                 #print n
-                delta_t = time.time() - start    
-                if int(delta_t) >= total_t:
-                    break
-	except TypeError:
-	        asrCase(value, ASRres)
-                adbConnection()
-    asrCase(value, ASRres)
-    #frr(value,n, start_t)
+				delta_t = time.time() - start
+				if int(delta_t) >= total_t:
+					break
+		except TypeError:
+			asrCase(value, ASRres)
+			adbConnection()
+	asrCase(value, ASRres)
+	#frr(value,n, start_t)
 
 
-print 'Hello! :), device under test s/n: %s' % deviceID
- 
+def exe():
+	for value in case:
+		KWcount(value)
+	f.close()
 
-for value in case:
-    KWcount(value)
-f.close()
+if __name__ == '__main__':
+	signal.signal(signal.SIGINT, exitGracefully)
+	exe()
+	
