@@ -1,5 +1,4 @@
 #!/usr/bin/python/2.7
-
 import time
 import threading
 import sys
@@ -15,15 +14,18 @@ adb = os.popen('adb devices').read().strip().split('\n')[1:]
 deviceID = adb[0].split('\t')[0]
 device = MonkeyRunner.waitForConnection(1000, deviceID)
 print 'Hello! :), device under test s/n: %s' % deviceID
-total_n = 20.0
-total_t = 472
-case = ['Clean']
-KW = 'NihaoZhongXin'
-outDir = '/home/ate/workspace/es804_CVQ_QS/CVQ'
-fname = os.path.join(outDir, KW + '_CVQ.txt')
-f = open(fname, 'w')
-
-
+device.shell('logcat -c')
+total_n = 20.0   # number of KWs per case
+total_t = 60*10  # length in seconds per case
+case = ['Clean', 'Car6']  # test cases
+outDir = '/home/ate/workspace/es804_CVQ_QS/English/CVQ' 
+FW = '51747'
+VP = 'VPon'
+Delay = '3200ms'
+# Uncomment below 3 lines for FRR/FA test
+#KW = 'NihaoZhongXin'
+#fname = os.path.join(outDir, KW + '_CVQ.txt')
+#f = open(fname, 'w')
 
 def adbConnection():
     try:
@@ -33,10 +35,10 @@ def adbConnection():
         print 'Could not get adb connection at %s' % time.asctime()
         sys.exit(1)
 
-def exitGracefully(self, signum, frame):
+def exitGracefully(signum, frame):
 	print 'Exiting Gracefully...'
 	signal.signal(signal.SIGINT, signal.getsignal(signal.SIGINT))
-	device.shell('killall com.android.commands.monkey')
+	device.shell('am force-close com.android.commands.monkey')
 	sys.exit(1)
 
 def asr(ASRres, b):
@@ -70,28 +72,28 @@ def snooz():
 		print "CVQ preset set"
 		break
 	else:
-		time.sleep(1)
-     
+		time.sleep(1)     
 
 def frr(value, n, start_t):
     z =  (total_n-n)/total_n*100            
     f.write("\nNoise: %s, KW detect count: %d, FRR rate: %.2f" % (value, n, round(z,2)))
     f.write("\nStart time: %s" % (start_t))
     f.write("\nEnd time: %s \n" % (time.asctime()))
-    f.write("==================================================\n\n")
-     
+    f.write("==================================================\n\n")     
 
 def far(value, n, start_t):
     f.write("Noise: %s, KW detect count: %d" % (value, n))
     f.write("\nStart time: %s" % (start_t))
     f.write("\nEnd time: %s \n" % (time.asctime()))
-    f.write("==================================================\n\n")
- 
+    f.write("==================================================\n\n") 
 
-def asrCase(value, ASRres):  
-    for i in ASRres:
-        f.write(''.join(str(i))) 
-        f.write('\n')
+def asrCase(value, ASRres):
+	fname = os.path.join(outDir, value + '_' + Delay + ' _B'+ FW + VP +' _CVQ.txt')
+	f = open(fname, 'w')
+	for i in ASRres:
+		f.write(''.join(str(i)))
+		f.write('\n')
+	f.close()
                 
 def KWcount(value):
 	n = 0
@@ -109,9 +111,9 @@ def KWcount(value):
 				print "KW detection: %d, Lapsed time: %d" % (n, delta_t)
 				b = ' (Utterance_%(n)03d)' % {"n":n}
 				asr(ASRres, b)
+				#comment out above line for FRR/FA test
 				snooz()
 			else:
-                #print n
 				delta_t = time.time() - start
 				if int(delta_t) >= total_t:
 					break
@@ -120,14 +122,15 @@ def KWcount(value):
 			adbConnection()
 	asrCase(value, ASRres)
 	#frr(value,n, start_t)
+	#far(value, n, start_t)
 
-
-def exe():
+def main():
 	for value in case:
 		KWcount(value)
-	f.close()
-
+	#f.close()
+    # Uncomment above line for FRR/FA test
+    
 if __name__ == '__main__':
 	signal.signal(signal.SIGINT, exitGracefully)
-	exe()
+	main()
 	
