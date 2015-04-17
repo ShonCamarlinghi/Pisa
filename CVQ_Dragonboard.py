@@ -20,16 +20,39 @@ device = MonkeyRunner.waitForConnection(1000, deviceID)
 print 'Hello! :), device under test s/n: %s' % deviceID
 device.shell('logcat -c')
 total_n = 20.0   # number of KWs per case
-total_t = 620  # length in seconds per case
+total_t = 660  # length in seconds per case
 case = ['Babble6']  # test cases
 outDir = '/home/ate/workspace/es804_CVQ_QS/English/CVQ'
 FW = '51747'
 VP = 'VPon'
-Delay = '50ms'
+Delay = '3200ms'
 # Uncomment below 3 lines for FRR/FA test
 #KW = 'NihaoZhongXin'
 #fname = os.path.join(outDir, KW + '_CVQ.txt')
 #f = open(fname, 'w')
+
+d = {
+	'Utterance_001':'Utterance_019',
+	'Utterance_002':'Utterance_034',
+	'Utterance_003':'Utterance_039',
+	'Utterance_004':'Utterance_041',
+	'Utterance_005':'Utterance_046',
+	'Utterance_006':'Utterance_059',
+	'Utterance_007':'Utterance_079',
+	'Utterance_008':'Utterance_083',
+	'Utterance_009':'Utterance_085',
+	'Utterance_010':'Utterance_101',
+	'Utterance_011':'Utterance_106',
+	'Utterance_012':'Utterance_130',
+	'Utterance_013':'Utterance_140',
+	'Utterance_014':'Utterance_150',
+	'Utterance_015':'Utterance_154',
+	'Utterance_016':'Utterance_164',
+	'Utterance_017':'Utterance_185',
+	'Utterance_018':'Utterance_187',
+	'Utterance_019':'Utterance_195',
+	'Utterance_020':'Utterance_199',
+}
 
 def adbConnection():
     try:
@@ -62,14 +85,13 @@ def asr(ASRres, b):
             print "Waiting for ASR response..."
             time.sleep(1)
 
-def pull_flac(outDir, value, flacFolder, n):
+def pull_flac(outDir, n):
 	print "Starting pull"
 	#command = ["bash", "./flac.sh", outDir, flac_name, b]
 	#subprocess.call(command, shell=False)
-	os.system(['mkdir', '%s/%s' % (outDir, flacFolder)])
-	flacPath='%s/%s/flac/%s.flac' % (outDir, flacFolder, n)
+	flacPath='%s/flac/%s.flac' % (outDir, n)
 	print flacPath
-	combPath='%s/%s/comb/%scomb.pcm' % (outDir, flacFolder, n)
+	combPath='%s/comb/%scomb.pcm' % (outDir, n)
 	print combPath
 	os.system('adb pull /data/data/com.audience.voiceqmultikeyword/files/flacdumpapp.flac %s' % flacPath )
 	os.system('adb pull /data/data/com.audience.voiceqmultikeyword/files/combineddumpapp %s' % combPath )
@@ -104,26 +126,27 @@ def far(value, n, start_t):
     f.write("\nEnd time: %s \n" % (time.asctime()))
     f.write("==================================================\n\n")
 
-def asrCase(value, ASRres):
-	fname = os.path.join(outDir, value + '_' + Delay + '_B'+ FW + VP +'_CVQ.txt')
+def asrCase(ASRres, testFolder, outDir):
+	fname = os.path.join(outDir, '%s_CVQ.txt' % testFolder)
 	f = open(fname, 'w')
 	for i in ASRres:
-		f.write(''.join(str(i)))
+		pattern = re.compile('|'.join(re.escape(key) for key in d.keys()))
+		result = pattern.sub(lambda x: d[x.group()], i)
+		#uncomment above 2 lines if Utterance number matches n, as dictionary use is irrelevant.
+		f.write(''.join(str(result)))
 		f.write('\n')
 	f.close()
-def test(outDir, flac_name, b):
-	print "Start"
-	command=["sh", "./test.sh", outDir, flac_name, b ]
-	subprocess.call(command, shell=False)
-	print "End"
-	#subprocess.check_output("echo", "Hello World!")
+	print fname
 
-def KWcount(value):
+def KWcount(value, outDir):
 	n = 0
 	start_t = time.asctime()
 	start = time.time()
 	ASRres =[]
-	print "\nStart time: %s, case: %s" % (start_t, value)
+	testFolder = '%s_%s_%s_%s' % (Delay, value, FW, VP)
+	os.system('mkdir %s/%s' % (outDir, testFolder))
+	outDir = '%s/%s' % (outDir, testFolder)
+	print "\nStart time: %s, case: %s, test directory: %s" % (start_t, value, outDir)
 	device.touch(260, 805, MonkeyDevice.DOWN_AND_UP)
 	while True:
 		logcat0 = device.shell('logcat -d -v time')
@@ -134,27 +157,23 @@ def KWcount(value):
 				print "KW detection: %d, Lapsed time: %d" % (n, delta_t)
 				b = ' (Utterance_%(n)03d)' % {"n":n}
 				asr(ASRres, b)
-				flacFolder = '%s_%s_%s_%s' % (Delay, value, FW, VP)
-				#os.system('adb root')
-                #os.system('adb wait-for-device')
-				pull_flac(outDir, value, flacFolder, n)
+				pull_flac(outDir, n)
 				#comment out above 3 lines for FRR/FA test
-				#test(outDir, flac_name, b)
 				snooz()
 			else:
 				delta_t = time.time() - start
 				if int(delta_t) >= total_t:
 					break
 		except TypeError:
-			asrCase(value, ASRres)
+			asrCase(ASRres, testFolder, outDir)
 			adbConnection()
-	asrCase(value, ASRres)
+	asrCase(ASRres, testFolder, outDir)
 	#frr(value,n, start_t)
 	#far(value, n, start_t)
 
 def main():
 	for value in case:
-		KWcount(value)
+		KWcount(value, outDir)
 	#f.close()
     # Uncomment above line for FRR/FA test
 
