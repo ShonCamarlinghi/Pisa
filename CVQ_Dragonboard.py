@@ -9,16 +9,11 @@ import re
 import subprocess
 import signal
 from com.android.monkeyrunner import MonkeyRunner, MonkeyDevice
+from java.util.logging import Level, Logger, StreamHandler, SimpleFormatter
+from java.io import ByteArrayOutputStream
 
-#os.system('adb root')
-#time.sleep(2)
-#os.system('adb remount')
-#time.sleep(2)
-adb = os.popen('adb devices').read().strip().split('\n')[1:]
-deviceID = adb[0].split('\t')[0]
-device = MonkeyRunner.waitForConnection(1000, deviceID)
-print 'Hello! :), device under test s/n: %s' % deviceID
-device.shell('logcat -c')
+
+
 total_n = 20.0   # number of KWs per case
 total_t = 660  # length in seconds per case
 case = ['Babble6']  # test cases
@@ -26,6 +21,23 @@ outDir = '/home/ate/workspace/es804_CVQ_QS/English/CVQ'
 FW = '51747'
 VP = 'VPon'
 Delay = '3200ms'
+
+
+errors = ByteArrayOutputStream(100)
+logger = Logger.getLogger('com.android.chimpchat.adb.AdbChimpDevice')
+logger.addHandler(StreamHandler(errors, SimpleFormatter()))
+
+os.system('adb root')
+time.sleep(2)
+os.system('adb remount')
+time.sleep(3)
+
+adb = os.popen('adb devices').read().strip().split('\n')[1:]
+deviceID = adb[0].split('\t')[0]
+device = MonkeyRunner.waitForConnection(1000, deviceID)
+print 'Hello! :), device under test s/n: %s' % deviceID
+device.shell('logcat -c')
+
 # Uncomment below 3 lines for FRR/FA test
 #KW = 'NihaoZhongXin'
 #fname = os.path.join(outDir, KW + '_CVQ.txt')
@@ -51,7 +63,7 @@ d = {
 	'Utterance_017':'Utterance_185',
 	'Utterance_018':'Utterance_187',
 	'Utterance_019':'Utterance_195',
-	'Utterance_020':'Utterance_199',
+	'Utterance_020':'Utterance_199'
 }
 
 def adbConnection():
@@ -67,6 +79,30 @@ def exitGracefully(signum, frame):
 	signal.signal(signal.SIGINT, signal.getsignal(signal.SIGINT))
 	device.shell('am force-close com.android.commands.monkey')
 	sys.exit(1)
+
+def restartMonkey_adb():
+	os.system('adb kill-server')
+	os.system('adb start-server')
+	device.shell('am force-close com.android.commands.monkey')
+	device.shell('am start com.android.commands.monkey')
+
+def init_state():
+	if device.shell('dumpsys power | grep mScreenOn=') == False:
+		device.press('KEYCODE_POWER', MonkeyDevice.Down_AND_UP)
+	else:
+		device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
+		while True:
+			logcat2 = device.shell('logcat -d -v time')
+			m2 = re.search(r'Time taken for: setting cvs preset', logcat2)
+			if m2:
+				print "CVQ preset set"
+				break
+			elif errors.size() > 0:
+				print "Restarting adb and monkey"
+				restartMonkey_adb()
+				device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
+			else:
+				time.sleep(1)
 
 def asr(ASRres, b):
     print "ASR"
@@ -100,18 +136,23 @@ def pull_flac(outDir, n):
 def snooz():
     device.shell('am force-stop com.android.browser')
     device.touch(460, 900, MonkeyDevice.DOWN_AND_UP)
-    #device.press('KEYCODE_BACK', MonkeyDevice.DOWN_AND_UP)
+    if errors.size() > 0:
+		restartMonkey_adb()
+		device.touch(460, 900, MonkeyDevice.DOWN_AND_UP)
     time.sleep(1)
     device.shell('logcat -c')
-    device.touch(260, 805, MonkeyDevice.DOWN_AND_UP)
+    device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
     while True:
-	logcat2 = device.shell('logcat -d -v time')
-	m2 = re.search(r'Time taken for: setting cvs preset', logcat2)
-	if m2:
-		print "CVQ preset set"
-		break
-	else:
-		time.sleep(1)
+		logcat2 = device.shell('logcat -d -v time')
+		m2 = re.search(r'Time taken for: setting cvs preset', logcat2)
+		if m2:
+			print "CVQ preset set"
+			break
+		elif errors.size() > 0:
+			restartMonkey_adb()
+			device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
+		else:
+			time.sleep(1)
 
 def frr(value, n, start_t):
     z =  (total_n-n)/total_n*100
@@ -147,7 +188,7 @@ def KWcount(value, outDir):
 	os.system('mkdir %s/%s' % (outDir, testFolder))
 	outDir = '%s/%s' % (outDir, testFolder)
 	print "\nStart time: %s, case: %s, test directory: %s" % (start_t, value, outDir)
-	device.touch(260, 805, MonkeyDevice.DOWN_AND_UP)
+	init_state()
 	while True:
 		logcat0 = device.shell('logcat -d -v time')
 		try:
@@ -175,7 +216,7 @@ def main():
 	for value in case:
 		KWcount(value, outDir)
 	#f.close()
-    # Uncomment above line for FRR/FA test
+	# Uncomment above line for FRR/FA test
 
 if __name__ == '__main__':
 	signal.signal(signal.SIGINT, exitGracefully)
