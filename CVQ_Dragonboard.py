@@ -9,8 +9,6 @@ import re
 import subprocess
 import signal
 from com.android.monkeyrunner import MonkeyRunner, MonkeyDevice
-from java.util.logging import Level, Logger, StreamHandler, SimpleFormatter
-from java.io import ByteArrayOutputStream
 
 
 
@@ -21,27 +19,23 @@ outDir = '/home/ate/workspace/es804_CVQ_QS/English/CVQ'
 FW = '51747'
 VP = 'VPon'
 Delay = '3200ms'
-
-
-errors = ByteArrayOutputStream(100)
-logger = Logger.getLogger('com.android.chimpchat.adb.AdbChimpDevice')
-logger.addHandler(StreamHandler(errors, SimpleFormatter()))
-
-os.system('adb root')
-time.sleep(2)
-os.system('adb remount')
-time.sleep(3)
-
-adb = os.popen('adb devices').read().strip().split('\n')[1:]
-deviceID = adb[0].split('\t')[0]
-device = MonkeyRunner.waitForConnection(1000, deviceID)
-print 'Hello! :), device under test s/n: %s' % deviceID
-device.shell('logcat -c')
-
 # Uncomment below 3 lines for FRR/FA test
 #KW = 'NihaoZhongXin'
 #fname = os.path.join(outDir, KW + '_CVQ.txt')
 #f = open(fname, 'w')
+
+
+os.system('adb root')
+time.sleep(2)
+os.system('adb remount')
+time.sleep(2)
+adb = os.popen('adb devices').read().strip().split('\n')[1:]
+deviceID = adb[0].split('\t')[0]
+device = MonkeyRunner.waitForConnection(1000, deviceID)
+strProperty = device.getProperty('fingerprint')
+print 'Build: %s' % strProperty
+print 'Connected to device s/n: %s' % deviceID
+
 
 d = {
 	'Utterance_001':'Utterance_019',
@@ -67,59 +61,66 @@ d = {
 }
 
 def adbConnection():
-    try:
-        device = MonkeyRunner.waitForConnection(5, deviceID)
-        print 'Connected to device: %s' % deviceID
-    except IndexError:
-        print 'Could not get adb connection at %s, is your device off/rebooting?' % time.asctime()
-        sys.exit(1)
+	try:
+		device = MonkeyRunner.waitForConnection(5, deviceID)
+		print 'Connected to device: %s' % deviceID
+	except IndexError:
+		print 'Could not get adb connection at %s, is your device off/rebooting?' % time.asctime()
+		sys.exit(1)
 
 def exitGracefully(signum, frame):
 	print 'Exiting Gracefully...'
 	signal.signal(signal.SIGINT, signal.getsignal(signal.SIGINT))
-	device.shell('am force-close com.android.commands.monkey')
 	sys.exit(1)
 
 def restartMonkey_adb():
+	device.shell('am force-close com.android.commands.monkey')
 	os.system('adb kill-server')
 	os.system('adb start-server')
-	device.shell('am force-close com.android.commands.monkey')
+	time.sleep(2)
 	device.shell('am start com.android.commands.monkey')
 
+def CVQ_preset():
+	device.shell('logcat -c')
+	device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
+	while True:
+		logcat2 = device.shell('logcat -d -v time')
+		m2 = re.search(r'Time taken for: setting cvs preset', logcat2)
+		if m2:
+			print "CVQ preset set"
+			break
+		else:
+			time.sleep(1)
+
 def init_state():
-	if device.shell('dumpsys power | grep mScreenOn=') == False:
-		device.press('KEYCODE_POWER', MonkeyDevice.Down_AND_UP)
-	else:
-		device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
-		while True:
-			logcat2 = device.shell('logcat -d -v time')
-			m2 = re.search(r'Time taken for: setting cvs preset', logcat2)
-			if m2:
-				print "CVQ preset set"
-				break
-			elif errors.size() > 0:
-				print "Restarting adb and monkey"
-				restartMonkey_adb()
-				device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
-			else:
-				time.sleep(1)
+	screen = device.shell('dumpsys power | grep mScreenOn=')
+	if 'true' in screen:
+		print "Screen is on, going to Low Power mode"
+		CVQ_preset()
+	elif 'false' in screen:
+		print "Screen is off, turning on screen"
+		device.press('KEYCODE_POWER', MonkeyDevice.DOWN_AND_UP)
+		screen = device.shell('dumpsys power | grep mScreenOn=')
+		if 'true' in screen:
+			print "Screen is on, going to Low Power mode"
+			CVQ_preset()
 
 def asr(ASRres, b):
-    print "ASR"
-    while True:
-        logcat1 = device.shell('logcat -d -v time')
-        m1 = re.search(r'parsed response', logcat1)
-        if m1:
-            print 'got ASR response', m1.group()
-            a = re.split(r'parsed response(.*)', (logcat1))
-            a = string.upper(a[len(a)-2])
-           # a = rstrip('\r')
-            ASRres.append(a.rstrip('\r') + b)
-            print ASRres
-            break
-        else:
-            print "Waiting for ASR response..."
-            time.sleep(1)
+	print "ASR"
+	while True:
+		logcat1 = device.shell('logcat -d -v time')
+		m1 = re.search(r'parsed response', logcat1)
+		if m1:
+			print 'got ASR response', m1.group()
+			a = re.split(r'parsed response(.*)', (logcat1))
+			a = string.upper(a[len(a)-2])
+			# a = rstrip('\r')
+			ASRres.append(a.rstrip('\r') + b)
+			print ASRres
+			break
+		else:
+			print "Waiting for ASR response..."
+			time.sleep(1)
 
 def pull_flac(outDir, n):
 	print "Starting pull"
@@ -134,38 +135,23 @@ def pull_flac(outDir, n):
 	print "Ended pull to %s" % outDir
 
 def snooz():
-    device.shell('am force-stop com.android.browser')
-    device.touch(460, 900, MonkeyDevice.DOWN_AND_UP)
-    if errors.size() > 0:
-		restartMonkey_adb()
-		device.touch(460, 900, MonkeyDevice.DOWN_AND_UP)
-    time.sleep(1)
-    device.shell('logcat -c')
-    device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
-    while True:
-		logcat2 = device.shell('logcat -d -v time')
-		m2 = re.search(r'Time taken for: setting cvs preset', logcat2)
-		if m2:
-			print "CVQ preset set"
-			break
-		elif errors.size() > 0:
-			restartMonkey_adb()
-			device.touch(160, 820, MonkeyDevice.DOWN_AND_UP)
-		else:
-			time.sleep(1)
+	device.shell('am force-stop com.android.browser')
+	device.touch(460, 900, MonkeyDevice.DOWN_AND_UP)
+	time.sleep(1)
+	CVQ_preset()
 
 def frr(value, n, start_t):
-    z =  (total_n-n)/total_n*100
-    f.write("\nNoise: %s, KW detect count: %d, FRR rate: %.2f" % (value, n, round(z,2)))
-    f.write("\nStart time: %s" % (start_t))
-    f.write("\nEnd time: %s \n" % (time.asctime()))
-    f.write("==================================================\n\n")
+	z =  (total_n-n)/total_n*100
+	f.write("\nNoise: %s, KW detect count: %d, FRR rate: %.2f" % (value, n, round(z,2)))
+	f.write("\nStart time: %s" % (start_t))
+	f.write("\nEnd time: %s \n" % (time.asctime()))
+	f.write("==================================================\n\n")
 
 def far(value, n, start_t):
-    f.write("Noise: %s, KW detect count: %d" % (value, n))
-    f.write("\nStart time: %s" % (start_t))
-    f.write("\nEnd time: %s \n" % (time.asctime()))
-    f.write("==================================================\n\n")
+	f.write("Noise: %s, KW detect count: %d" % (value, n))
+	f.write("\nStart time: %s" % (start_t))
+	f.write("\nEnd time: %s \n" % (time.asctime()))
+	f.write("==================================================\n\n")
 
 def asrCase(ASRres, testFolder, outDir):
 	fname = os.path.join(outDir, '%s_CVQ.txt' % testFolder)
@@ -188,7 +174,7 @@ def KWcount(value, outDir):
 	os.system('mkdir %s/%s' % (outDir, testFolder))
 	outDir = '%s/%s' % (outDir, testFolder)
 	print "\nStart time: %s, case: %s, test directory: %s" % (start_t, value, outDir)
-	init_state()
+
 	while True:
 		logcat0 = device.shell('logcat -d -v time')
 		try:
@@ -212,11 +198,16 @@ def KWcount(value, outDir):
 	#frr(value,n, start_t)
 	#far(value, n, start_t)
 
+
+
+
 def main():
+	init_state()
 	for value in case:
 		KWcount(value, outDir)
 	#f.close()
 	# Uncomment above line for FRR/FA test
+
 
 if __name__ == '__main__':
 	signal.signal(signal.SIGINT, exitGracefully)
